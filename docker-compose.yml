@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  ankha-bot:
+    build: .
+    container_name: ankha-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # БД сохраняется между перезапусками
+      - bot-data:/app/data
+
+volumes:
+  bot-data:
