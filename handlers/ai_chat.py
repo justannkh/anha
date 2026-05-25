@@ -15,7 +15,7 @@ client = AsyncOpenAI(
 
 # Модели — попробуем основную, при 403 переключимся на запасную
 AI_MODELS = [
-    "llama-3.3-70b-versatile",
+    "qwen3-32b",
     "llama-3.1-8b-instant",
 ]
 
@@ -48,7 +48,8 @@ IMPORTANT RULES:
 - Keep answers SHORT: 1-3 sentences max. Be concise and punchy.
 - Never write walls of text. If someone asks a complex question, still keep it brief and sharp.
 - Use your sassy personality to make even short answers memorable.
-- You can use emoji sparingly but don't overdo it."""
+- You can use emoji sparingly but don't overdo it.
+- Always respond only in Russian. Never use Chinese characters, Japanese symbols, or English words unless the user explicitly uses them."""
 
 OWNER_PERSONA = """
 
