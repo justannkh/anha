@@ -3,8 +3,8 @@ import os
 
 load_dotenv()
 
-BOT_TOKEN    = os.getenv("BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROQ_KEYS = os.getenv("GROQ_API_KEYS", "").split(",")
 
 _owner_id = os.getenv("OWNER_ID")
 if not _owner_id:

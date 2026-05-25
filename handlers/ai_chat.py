@@ -8,16 +8,8 @@ from db.database import get_persona, get_role, clear_ai_history
 
 router = Router()
 
-client = AsyncOpenAI(
-    api_key=GROQ_API_KEY,
-    base_url="https://api.groq.com/openai/v1"
-)
-
-# Модели — попробуем основную, при 403 переключимся на запасную
-AI_MODELS = [
-    "qwen3-32b",
-    "llama-3.1-8b-instant",
-]
+client = AsyncOpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+AI_MODELS = ["qwen3-32b", "llama-3.1-8b-instant"]
 
 # ── Рейт-лимит ───────────────────────────────────────────────────
 RATE_LIMIT_MAX   = 5
