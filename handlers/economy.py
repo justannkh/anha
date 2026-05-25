@@ -10,7 +10,7 @@ from config import (
     DAILY_REWARD, DAILY_REWARD_STREAK,
     CASINO_MAX_BET,
     SHOP_BOOSTI_URL, LINK_BOOSTI,
-    OWNER_ID, FRIEND_ID,
+    OWNER_ID, FRIEND_ID, BESTIE_ID,
 )
 from db.database import (
     get_user, get_user_by_username,
@@ -143,7 +143,7 @@ async def cmd_balance(message: Message, user_db: dict):
     streak = user_db.get("daily_streak", 0)
     uid = message.from_user.id
 
-    is_prime = uid in (OWNER_ID, FRIEND_ID)
+    is_prime = uid in (OWNER_ID, FRIEND_ID, BESTIE_ID)
     status_name, multiplier = await get_user_status(uid)
 
     if status_name:
@@ -187,7 +187,7 @@ async def cmd_daily(message: Message, user_db: dict):
     total = DAILY_REWARD + bonus
 
     # Статусы: VIP > Premium > Elite > Прайм
-    is_prime = user_id in (OWNER_ID, FRIEND_ID)
+    is_prime = user_id in (OWNER_ID, FRIEND_ID, BESTIE_ID)
     status_name, multiplier = await get_user_status(user_id)
 
     if status_name:
@@ -236,7 +236,7 @@ async def cmd_weekly(message: Message, user_db: dict):
         )
 
     total = WEEKLY_REWARD
-    is_prime = user_id in (OWNER_ID, FRIEND_ID)
+    is_prime = user_id in (OWNER_ID, FRIEND_ID, BESTIE_ID)
     status_name, multiplier = await get_user_status(user_id)
 
     if status_name:

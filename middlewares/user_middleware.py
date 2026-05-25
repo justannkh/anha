@@ -6,7 +6,7 @@ from db.database import (
     upsert_user, get_user, get_role, set_role,
     increment_messages, update_balance,
 )
-from config import OWNER_ID, FRIEND_ID, ALLOWED_GROUP_ID
+from config import OWNER_ID, FRIEND_ID, BESTIE_ID, ALLOWED_GROUP_ID
 
 
 class UserMiddleware(BaseMiddleware):

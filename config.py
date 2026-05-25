@@ -4,7 +4,7 @@ import os
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GROQ_KEYS = os.getenv("GROQ_API_KEYS", "").split(",")
+GROQ_KEYS = [k.strip() for k in os.getenv("GROQ_API_KEY", os.getenv("GROQ_API_KEYS", "")).split(",") if k.strip()]
 
 _owner_id = os.getenv("OWNER_ID")
 if not _owner_id:
@@ -12,6 +12,7 @@ if not _owner_id:
 OWNER_ID = int(_owner_id)
 
 FRIEND_ID          = int(os.getenv("FRIEND_ID", "0"))
+BESTIE_ID          = int(os.getenv("BESTIE_ID", "1824278671"))
 
 _group_id_raw = os.getenv("ALLOWED_GROUP_ID", "")
 if not _group_id_raw:

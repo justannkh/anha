@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from config import OWNER_ID, FRIEND_ID
+from config import OWNER_ID, FRIEND_ID, BESTIE_ID
 from db.database import (
     get_user, get_user_by_username, get_role,
     ROLES, ROLE_NAMES, ROLE_LABELS,
@@ -282,7 +282,7 @@ async def cmd_info(message: Message):
     await message.answer(
         "🖤 <b>Кто я такая?</b>\n\n"
         "Меня зовут <b>Анха</b>. Я демоница, которая застряла в мире людей "
-        "и теперь подрабатываю модератором в этом жалком чатике за копейки.\n\n"
+        "и теперь тусуюсь в этом чатике. Да, я девушка Анкха. Завидуйте молча.\n\n"
         "Моя кожа на лице белая как снег, а ниже шеи — чёрная как уголь. "
         "Волосы белые, глаза без зрачков — да, я знаю, это жутко. "
         "Клык торчит? Это не баг, это фича.\n\n"
