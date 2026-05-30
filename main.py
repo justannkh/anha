@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from config import BOT_TOKEN, ALLOWED_GROUP_ID, OWNER_ID
 from db.database import init_db, purge_old_ai_history, ensure_owner_marriage
 from middlewares.user_middleware import UserMiddleware
-from handlers import admin, ai_chat, links, reputation, economy, marriage, rp
+from handlers import admin, ai_chat, links, reputation, economy, marriage, rp, triggers
 from handlers import profile as profile_handler
 from tasks.youtube import youtube_task
 
@@ -85,15 +85,18 @@ async def main():
     # 2. admin     — модерация + персоны
     # 3. links     — .ссылки
     # 4. economy   — .баланс, .казино, .магазин, .ежедневная, .передать
-    # 5. marriage  — .брак, .развод, .мойбрак, .браки
-    # 6. reputation — реакция на "+" и слова (до ai_chat!)
-    # 7. ai_chat   — ловит всё остальное (последним!)
+    # 5. marriage  — .брак, .развод, .мойбрак, .браки, .гарем
+    # 6. rp        — рп-команды
+    # 7. triggers  — реакция на «фд» и спам (до reputation/ai_chat!)
+    # 8. reputation — реакция на "+" и слова (до ai_chat!)
+    # 9. ai_chat   — ловит всё остальное (последним!)
     dp.include_router(profile_handler.router)
     dp.include_router(admin.router)
     dp.include_router(links.router)
     dp.include_router(economy.router)
     dp.include_router(marriage.router)
     dp.include_router(rp.router)
+    dp.include_router(triggers.router)
     dp.include_router(reputation.router)
     dp.include_router(ai_chat.router)
 

@@ -3,12 +3,10 @@ import random
 from aiogram import Router, F
 from aiogram.types import Message
 
+from config import MAX_REP_RECEIVED_PER_DAY, REP_COOLDOWN_SECONDS
 from db.database import add_reputation, get_user, check_rep_cooldown, set_rep_cooldown, count_rep_received_today
 
 router = Router()
-
-# Макс. 20 получений репутации в день на одного юзера (защита от мультиакков)
-MAX_REP_RECEIVED_PER_DAY = 20
 
 # Расширенный список слов для повышения репутации
 _PLUS_RE = re.compile(r'^\++$')
@@ -65,7 +63,7 @@ async def rep_handler(message: Message):
         return
 
     # Проверяем кулдаун (1 час между одним и тем же юзером)
-    on_cd = await check_rep_cooldown(message.from_user.id, target_user.id, seconds=3600)
+    on_cd = await check_rep_cooldown(message.from_user.id, target_user.id, seconds=REP_COOLDOWN_SECONDS)
     if on_cd:
         return await message.answer(
             "⏳ Ты уже давал репутацию этому юзеру недавно.\n"

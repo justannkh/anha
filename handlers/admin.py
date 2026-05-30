@@ -143,7 +143,7 @@ async def cmd_warn(message: Message, bot: Bot):
 
 # ── .варнлог ──────────────────────────────────────────────────────
 
-@router.message(Command("варнлог", "warnlog", prefix=P))
+@router.message(Command("варнлог", "warnlog", "варны", "историяварнов", prefix=P))
 @moder_only
 async def cmd_warnlog(message: Message):
     target_id, err, _ = await resolve_target(message)
@@ -173,7 +173,7 @@ async def cmd_warnlog(message: Message):
 
 # ── .снятьварн ────────────────────────────────────────────────────
 
-@router.message(Command("снятьварн", "unwarn", prefix=P))
+@router.message(Command("снятьварн", "unwarn", "убратьварн", "сброситьварн", prefix=P))
 @moder_only
 async def cmd_unwarn(message: Message):
     target_id, err, _ = await resolve_target(message)
@@ -360,7 +360,7 @@ async def cmd_setrole(message: Message, user_db: dict):
 
 # ── Персоны ────────────────────────────────────────────────────────
 
-@router.message(Command("персона", "persona", prefix=P))
+@router.message(Command("персона", "persona", "перс", prefix=P))
 @owner_only
 async def cmd_persona(message: Message):
     parts = (message.text or "").split(None, 2)
@@ -431,7 +431,7 @@ async def cmd_persona(message: Message):
     )
 
 
-@router.message(Command("делперс", "delpersona", prefix=P))
+@router.message(Command("делперс", "delpersona", "удалитьперсону", "удалперсону", prefix=P))
 @owner_only
 async def cmd_del_persona(message: Message):
     target_id, err, _ = await resolve_target(message)
@@ -448,7 +448,7 @@ async def cmd_del_persona(message: Message):
 
 # ── .сброс ────────────────────────────────────────────────────────
 
-@router.message(Command("сброс", "reset", prefix=P))
+@router.message(Command("сброс", "reset", "сбросить", "забыть", "очистить", prefix=P))
 @owner_only
 async def cmd_reset_ai(message: Message):
     """Полностью сбрасывает историю ИИ и память."""

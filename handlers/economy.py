@@ -7,8 +7,11 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import (
-    DAILY_REWARD, DAILY_REWARD_STREAK,
-    CASINO_MAX_BET,
+    DAILY_REWARD, DAILY_REWARD_STREAK, WEEKLY_REWARD,
+    CASINO_MAX_BET, DEP_MIN_BET, ROULETTE_MIN_BET, COINFLIP_MIN_BET,
+    CASINO_RATE_MAX, CASINO_RATE_WINDOW,
+    WORK_MAX_PER_DAY, WORK_WINDOW_HOURS, WORK_COOLDOWN_HOURS,
+    SHOP_PRICES,
     SHOP_BOOSTI_URL, LINK_BOOSTI,
     OWNER_ID, FRIEND_ID, BESTIE_ID,
 )
@@ -26,10 +29,7 @@ from db.database import (
 router = Router()
 P = "."
 
-# ── Рейт-лимит казино: макс 10 ставок за 60 секунд ───────────────
-CASINO_RATE_MAX = 10
-CASINO_RATE_WINDOW = 60
-
+# ── Рейт-лимит казино (настройки в config.py) ────────────────────
 _casino_buckets: dict[int, list[float]] = {}
 
 
@@ -54,52 +54,98 @@ SHOP_ITEMS = {
     "vip": {
         "name": "💎 VIP-статус",
         "desc": "x2 к наградам на 30 дней. Золотой профиль. Авто-активация.",
-        "price": 30000,
+        "price": SHOP_PRICES["vip"],
         "repeatable": True,
     },
     "premium": {
         "name": "⭐ Premium-статус",
         "desc": "x1.5 к наградам на 14 дней. Серебряный профиль. Авто-активация.",
-        "price": 15000,
+        "price": SHOP_PRICES["premium"],
         "repeatable": True,
     },
     "elite": {
         "name": "🔥 Elite-статус",
         "desc": "x1.25 к наградам на 7 дней. Бронзовый профиль. Авто-активация.",
-        "price": 5000,
+        "price": SHOP_PRICES["elite"],
         "repeatable": True,
     },
     "boosti_sub": {
         "name": "🎁 Подписка Boosty",
         "desc": "Подписка «Базовый минимум» на Boosty на 1 месяц.",
-        "price": 150000,
+        "price": SHOP_PRICES["boosti_sub"],
         "repeatable": False,
     },
     "custom_title": {
         "name": "🏷 Кастомный титул",
         "desc": "Уникальный титул в профиле. Пишите администрации.",
-        "price": 50000,
+        "price": SHOP_PRICES["custom_title"],
         "repeatable": False,
     },
     "rep_boost": {
         "name": "⚡ Буст репутации",
         "desc": "+50 к репутации мгновенно.",
-        "price": 35000,
+        "price": SHOP_PRICES["rep_boost"],
         "repeatable": False,
     },
     "lucky_box": {
         "name": "🎲 Ящик удачи",
         "desc": "Случайный приз от 500 до 5000 монет.",
-        "price": 3000,
+        "price": SHOP_PRICES["lucky_box"],
         "repeatable": True,
     },
     "mega_box": {
         "name": "🎁 Мега-ящик",
         "desc": "Случайный приз от 5000 до 30000 монет!",
-        "price": 15000,
+        "price": SHOP_PRICES["mega_box"],
         "repeatable": True,
     },
 }
+
+# ── Русские псевдонимы товаров ────────────────────────────────────
+# Чтобы можно было писать .купить вип вместо .купить vip
+SHOP_ALIASES = {
+    # vip
+    "вип": "vip", "vip": "vip", "віп": "vip",
+    # premium
+    "премиум": "premium", "према": "premium", "премка": "premium", "prem": "premium",
+    # elite
+    "элита": "elite", "элит": "elite", "elite": "elite",
+    # boosti
+    "бусти": "boosti_sub", "подписка": "boosti_sub", "boosty": "boosti_sub",
+    "boosti": "boosti_sub", "boosti_sub": "boosti_sub",
+    # custom title
+    "титул": "custom_title", "титл": "custom_title", "custom_title": "custom_title",
+    "титулка": "custom_title",
+    # rep boost
+    "реп": "rep_boost", "репутация": "rep_boost", "бустреп": "rep_boost",
+    "буст": "rep_boost", "rep": "rep_boost", "rep_boost": "rep_boost",
+    # lucky box
+    "ящик": "lucky_box", "ящикудачи": "lucky_box", "коробка": "lucky_box",
+    "lucky": "lucky_box", "lucky_box": "lucky_box", "бокс": "lucky_box",
+    # mega box
+    "мегаящик": "mega_box", "мега": "mega_box", "мегабокс": "mega_box",
+    "mega": "mega_box", "mega_box": "mega_box", "megabox": "mega_box",
+}
+
+# Короткое русское имя для подсказки в магазине
+SHOP_RU_HINT = {
+    "vip": "вип",
+    "premium": "премиум",
+    "elite": "элита",
+    "boosti_sub": "бусти",
+    "custom_title": "титул",
+    "rep_boost": "реп",
+    "lucky_box": "ящик",
+    "mega_box": "мегаящик",
+}
+
+
+def _resolve_item_key(raw: str) -> str | None:
+    """Сопоставляет ввод пользователя (рус/англ) с ключом товара."""
+    key = raw.strip().lower().replace("ё", "е")
+    if key in SHOP_ITEMS:
+        return key
+    return SHOP_ALIASES.get(key)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -137,7 +183,7 @@ def _spin_slots() -> tuple[list[str], float]:
 
 # ── .баланс ───────────────────────────────────────────────────────
 
-@router.message(Command("баланс", "balance", "bal", prefix=P))
+@router.message(Command("баланс", "balance", "bal", "кошелёк", "кошелек", "деньги", "монеты", prefix=P))
 async def cmd_balance(message: Message, user_db: dict):
     bal = user_db.get("balance", 0)
     streak = user_db.get("daily_streak", 0)
@@ -164,7 +210,7 @@ async def cmd_balance(message: Message, user_db: dict):
 
 # ── .ежедневная ───────────────────────────────────────────────────
 
-@router.message(Command("ежедневная", "дейли", "daily", prefix=P))
+@router.message(Command("ежедневная", "дейли", "daily", "ежа", prefix=P))
 async def cmd_daily(message: Message, user_db: dict):
     user_id = message.from_user.id
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
@@ -219,9 +265,7 @@ async def cmd_daily(message: Message, user_db: dict):
 
 # ── .еженедельная ─────────────────────────────────────────────────
 
-WEEKLY_REWARD = 3000
-
-@router.message(Command("еженедельная", "викли", "weekly", prefix=P))
+@router.message(Command("еженедельная", "викли", "weekly", "недельная", prefix=P))
 async def cmd_weekly(message: Message, user_db: dict):
     user_id = message.from_user.id
     # Номер недели в году
@@ -263,7 +307,20 @@ async def cmd_weekly(message: Message, user_db: dict):
 
 # ── .работа ────────────────────────────────────────────────────────
 
-WORK_MAX_PER_DAY = 3
+def _fmt_left(delta: timedelta) -> str:
+    """Форматирует «осталось Xч Yмин» из timedelta."""
+    total = int(delta.total_seconds())
+    if total < 0:
+        total = 0
+    h = total // 3600
+    m = (total % 3600) // 60
+    if h > 0 and m > 0:
+        return f"{h} ч {m} мин"
+    if h > 0:
+        return f"{h} ч"
+    if m > 0:
+        return f"{m} мин"
+    return "меньше минуты"
 
 # ══════════════════════════════════════════════════════════════════
 #  МИНИ-ИГРА «РАБОТА» — случайные приключения с рандомным исходом
@@ -375,21 +432,56 @@ WORK_SCENARIOS = [
 ]
 
 
-@router.message(Command("работа", "work", "job", prefix=P))
+@router.message(Command("работа", "work", "job", "подработка", prefix=P))
 async def cmd_work(message: Message, user_db: dict):
     user_id = message.from_user.id
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    now = datetime.utcnow()
 
-    last_work, work_count = await get_work_info(user_id)
+    # last_work теперь хранит ISO-таймстамп ПЕРВОЙ попытки в текущей сессии,
+    # work_count — сколько попыток уже сделано в этой сессии.
+    last_work_raw, work_count = await get_work_info(user_id)
 
-    if last_work != today_str:
+    first_use = None
+    if last_work_raw:
+        try:
+            first_use = datetime.fromisoformat(last_work_raw)
+        except (ValueError, TypeError):
+            first_use = None  # старый формат (дата) — считаем сессию завершённой
+
+    # Определяем состояние сессии
+    if first_use is None:
+        # Нет активной сессии — начинаем новую
         work_count = 0
+    else:
+        elapsed = now - first_use
+        window_end = first_use + timedelta(hours=WORK_WINDOW_HOURS)
+        cooldown_end = first_use + timedelta(hours=WORK_COOLDOWN_HOURS)
 
-    if work_count >= WORK_MAX_PER_DAY:
-        return await message.answer(
-            f"😮‍💨 Ты уже отработал {WORK_MAX_PER_DAY} раза сегодня.\n"
-            "Отдохни, завтра продолжишь!"
-        )
+        if work_count >= WORK_MAX_PER_DAY:
+            # Все попытки израсходованы → ждём окончания 24ч кулдауна от первой попытки
+            if now < cooldown_end:
+                left = _fmt_left(cooldown_end - now)
+                return await message.answer(
+                    f"😮‍💨 Ты уже отработал все <b>{WORK_MAX_PER_DAY}</b> попытки.\n"
+                    f"⏳ Следующая смена через <b>{left}</b>.",
+                    parse_mode="HTML"
+                )
+            # Кулдаун прошёл — новая сессия
+            first_use = None
+            work_count = 0
+        elif now >= window_end:
+            # 4-часовое окно истекло, но попытки ещё оставались.
+            # Действует кулдаун 24ч от первой попытки.
+            if now < cooldown_end:
+                left = _fmt_left(cooldown_end - now)
+                return await message.answer(
+                    f"⏳ Рабочее окно (<b>{WORK_WINDOW_HOURS} ч</b>) закрылось.\n"
+                    f"Новая смена откроется через <b>{left}</b>.",
+                    parse_mode="HTML"
+                )
+            first_use = None
+            work_count = 0
+        # иначе: сессия активна и в окне — продолжаем
 
     # Выбираем случайный сценарий
     scenario = random.choice(WORK_SCENARIOS)
@@ -407,9 +499,11 @@ async def cmd_work(message: Message, user_db: dict):
     _, outcome_desc, min_reward, max_reward = chosen_outcome
     reward = random.randint(min(min_reward, max_reward), max(min_reward, max_reward))
 
-    # Записываем работу
+    # Записываем работу: если это первая попытка сессии — фиксируем время старта
+    if work_count == 0:
+        first_use = now
     new_count = work_count + 1
-    await set_work_info(user_id, today_str, new_count)
+    await set_work_info(user_id, first_use.isoformat(timespec="seconds"), new_count)
 
     if reward > 0:
         new_bal = await update_balance(user_id, reward, "work", scenario["name"])
@@ -427,6 +521,17 @@ async def cmd_work(message: Message, user_db: dict):
         new_bal = await get_balance(user_id)
         reward_line = "💸 <b>0</b> монет"
 
+    # Подсказка о том, что будет после
+    if new_count >= WORK_MAX_PER_DAY:
+        cooldown_end = first_use + timedelta(hours=WORK_COOLDOWN_HOURS)
+        tail = f"⏳ Это была последняя попытка. Кулдаун: <b>{_fmt_left(cooldown_end - datetime.utcnow())}</b>."
+    else:
+        window_end = first_use + timedelta(hours=WORK_WINDOW_HOURS)
+        tail = (
+            f"📊 Попыток: {new_count}/{WORK_MAX_PER_DAY} "
+            f"(окно ещё <b>{_fmt_left(window_end - datetime.utcnow())}</b>)"
+        )
+
     await message.answer(
         f"╔══════════════════════╗\n"
         f"  🔨 <b>{scenario['name']}</b>\n"
@@ -435,7 +540,7 @@ async def cmd_work(message: Message, user_db: dict):
         f"{outcome_desc}\n\n"
         f"{reward_line}\n"
         f"💵 Баланс: <b>{new_bal:,}</b>\n"
-        f"📊 Работ сегодня: {new_count}/{WORK_MAX_PER_DAY}",
+        f"{tail}",
         parse_mode="HTML"
     )
 
@@ -447,9 +552,8 @@ def has_active_job(user_id: int) -> bool:
 
 # ── .дэп / .казино / .слот ────────────────────────────────────────
 
-DEP_MIN_BET = 100  # минимум для дэпа
 
-@router.message(Command("дэп", "dep", "казино", "слот", "slot", "casino", prefix=P))
+@router.message(Command("дэп", "dep", "казино", "слот", "slot", "casino", "слоты", prefix=P))
 async def cmd_casino(message: Message, user_db: dict):
     parts = (message.text or "").split()
     if len(parts) < 2:
@@ -540,7 +644,6 @@ async def cmd_casino(message: Message, user_db: dict):
 
 # ── .рулетка (числовая) ──────────────────────────────────────────
 
-ROULETTE_MIN_BET = 50
 
 @router.message(Command("рулетка", "roulette", prefix=P))
 async def cmd_roulette(message: Message, user_db: dict):
@@ -626,7 +729,6 @@ async def cmd_roulette(message: Message, user_db: dict):
 
 # ── .коинфлип ─────────────────────────────────────────────────────
 
-COINFLIP_MIN_BET = 25
 
 @router.message(Command("коинфлип", "coinflip", "монетка", prefix=P))
 async def cmd_coinflip(message: Message, user_db: dict):
@@ -694,7 +796,7 @@ async def cmd_coinflip(message: Message, user_db: dict):
 
 # ── .передать ─────────────────────────────────────────────────────
 
-@router.message(Command("передать", "transfer", "pay", prefix=P))
+@router.message(Command("передать", "transfer", "pay", "перевод", "кинуть", "отправить", prefix=P))
 async def cmd_transfer(message: Message, user_db: dict):
     parts = (message.text or "").split()
     if len(parts) < 3:
@@ -749,7 +851,7 @@ async def cmd_transfer(message: Message, user_db: dict):
 
 # ── .топбаланс ────────────────────────────────────────────────────
 
-@router.message(Command("топбаланс", "topbal", "richest", prefix=P))
+@router.message(Command("топбаланс", "topbal", "richest", "топденег", "богачи", prefix=P))
 async def cmd_topbalance(message: Message):
     rows = await get_top_balance(10)
     if not rows:
@@ -769,7 +871,7 @@ async def cmd_topbalance(message: Message):
 
 # ── .магазин ──────────────────────────────────────────────────────
 
-@router.message(Command("магазин", "shop", "store", prefix=P))
+@router.message(Command("магазин", "shop", "store", "магаз", prefix=P))
 async def cmd_shop(message: Message, user_db: dict):
     bal = user_db.get("balance", 0)
     lines = [
@@ -778,30 +880,33 @@ async def cmd_shop(message: Message, user_db: dict):
     ]
     for key, item in SHOP_ITEMS.items():
         affordable = "✅" if bal >= item["price"] else "❌"
+        ru = SHOP_RU_HINT.get(key, key)
         lines.append(
             f"  {affordable} <b>{item['name']}</b> — {item['price']:,} монет\n"
             f"      <i>{item['desc']}</i>\n"
-            f"      Купить: <code>{P}купить {key}</code>\n"
+            f"      Купить: <code>{P}купить {ru}</code>\n"
         )
+    lines.append("<i>Можно писать по-русски: .купить вип, .купить ящик, .купить реп …</i>")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 # ── .купить ───────────────────────────────────────────────────────
 
-@router.message(Command("купить", "buy", prefix=P))
+@router.message(Command("купить", "buy", "взять", prefix=P))
 async def cmd_buy(message: Message, user_db: dict):
     parts = (message.text or "").split()
     if len(parts) < 2:
         return await message.answer(
             f"🏪 Формат: <code>{P}купить [товар]</code>\n"
+            f"Например: <code>{P}купить вип</code>, <code>{P}купить ящик</code>\n"
             f"Список товаров: <code>{P}магазин</code>",
             parse_mode="HTML"
         )
 
-    item_key = parts[1].lower()
-    if item_key not in SHOP_ITEMS:
+    item_key = _resolve_item_key(parts[1])
+    if not item_key or item_key not in SHOP_ITEMS:
         return await message.answer(
-            f"❌ Товар <b>{item_key}</b> не найден.\n"
+            f"❌ Товар <b>{parts[1]}</b> не найден.\n"
             f"Смотри каталог: <code>{P}магазин</code>",
             parse_mode="HTML"
         )

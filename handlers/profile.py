@@ -1,4 +1,4 @@
-from aiogram import Router
+from aiogram import Router, Bot
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -123,7 +123,7 @@ async def cmd_help(message: Message, user_db: dict):
     lines.append(f"║ {P}баланс — твои монеты")
     lines.append(f"║ {P}дейли — ежедневная награда")
     lines.append(f"║ {P}викли — еженедельная награда")
-    lines.append(f"║ {P}работа — мини-игра (3/день)")
+    lines.append(f"║ {P}работа — мини-игра (3 попытки / 4ч, потом кд 24ч)")
     lines.append(f"║ {P}передать [сумма] @user — перевод")
     lines.append(f"║ {P}топбаланс — богачи")
     lines.append("║")
@@ -142,6 +142,14 @@ async def cmd_help(message: Message, user_db: dict):
     lines.append(f"║ {P}мойбрак — инфо")
     lines.append(f"║ {P}развод — расторжение")
     lines.append(f"║ {P}браки — список")
+    lines.append("║")
+    lines.append("╠═ 🌹 <b>Гарем</b>")
+    lines.append(f"║ {P}гарем — твой гарем")
+    lines.append(f"║ {P}гарем @user — позвать (нужно быть в браке)")
+    lines.append(f"║ {P}гаремда / {P}гаремнет — ответ на приглашение")
+    lines.append(f"║ {P}выгнать @user — убрать из гарема")
+    lines.append(f"║ {P}разрешитьгарем — разрешить супругу гарем")
+    lines.append(f"║ {P}запретитьгарем — запретить супругу гарем")
     lines.append("║")
     lines.append("╠═ 🔗 <b>Ссылки</b>")
     lines.append(f"║ {P}ссылки — все платформы")
@@ -173,6 +181,7 @@ async def cmd_help(message: Message, user_db: dict):
     if lvl <= ROLES["owner"]:
         lines.append("║")
         lines.append("╠═ 👑 <b>Овнер</b>")
+        lines.append(f"║ {P}овнерхелп — все команды овнера в ЛС")
         lines.append(f"║ {P}персона — персоны ИИ")
         lines.append(f"║ {P}делперс — удалить персону")
         lines.append(f"║ {P}сброс — сбросить память ИИ")
@@ -188,9 +197,56 @@ async def cmd_help(message: Message, user_db: dict):
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
-# ── .профиль ───────────────────────────────────────────────────────
+# ── .овнерхелп — команды овнера в ЛС ──────────────────────────────
 
-@router.message(Command("профиль", "profile", prefix=P))
+def _build_owner_help() -> str:
+    lines = [
+        "👑 <b>Команды Овнера</b>\n",
+        "╔═ ⚙️ <b>Управление ИИ</b>",
+        f"║ {P}персона — настройка персон ИИ",
+        f"║ {P}делперс — удалить персону",
+        f"║ {P}сброс — сбросить память ИИ",
+        "║",
+        "╠═ 💍 <b>Браки и гарем</b>",
+        f"║ {P}поженить @u1 @u2 — поженить двоих",
+        f"║ {P}развести @user — расторгнуть брак",
+        f"║ {P}гарем — твой гарем (без разрешений!)",
+        f"║ {P}гарем @user — позвать в гарем",
+        f"║ {P}выгнать @user — убрать из гарема",
+        "║ <i>Брак с Анхой при этом сохраняется 🖤</i>",
+        "║",
+        "╠═ 🛡 <b>Модерация / Админка</b>",
+        f"║ {P}бан / {P}разбан [причина]",
+        f"║ {P}мут / {P}размут [время]",
+        f"║ {P}варн / {P}снятьварн / {P}варнлог",
+        f"║ {P}роль ID роль — выдать роль",
+        "║",
+        "╠═ 📜 <b>Прочее</b>",
+        f"║ {P}правила [текст] — задать правила чата",
+        "╚═ 🤖 ИИ говорит с тобой как с хозяином",
+    ]
+    return "\n".join(lines)
+
+
+@router.message(Command("овнерхелп", "ownerhelp", "помощьовнера", "овнерпомощь", prefix=P))
+async def cmd_owner_help(message: Message, user_db: dict, bot: Bot):
+    if user_db["user_id"] != OWNER_ID:
+        return await message.answer("⛔ Эта команда только для овнера.")
+
+    text = _build_owner_help()
+    try:
+        await bot.send_message(OWNER_ID, text, parse_mode="HTML")
+        # Если команда вызвана в группе — подтверждаем и не палим список в чат
+        if message.chat.type != "private":
+            await message.reply("📩 Скинула список команд овнера тебе в ЛС, хозяин. 🖤")
+    except Exception:
+        # Не удалось написать в ЛС (юзер не открыл диалог с ботом)
+        await message.reply(
+            "⚠️ Не смогла написать тебе в ЛС.\n"
+            "Открой со мной диалог (напиши мне /start в личку) и попробуй снова."
+        )
+
+@router.message(Command("профиль", "profile", "проф", "я", prefix=P))
 async def cmd_profile(message: Message, user_db: dict):
     target_db = None
     
@@ -237,7 +293,7 @@ async def cmd_profile(message: Message, user_db: dict):
 
 # ── .топ ───────────────────────────────────────────────────────────
 
-@router.message(Command("топ", "top", prefix=P))
+@router.message(Command("топ", "top", "топчата", "топактив", prefix=P))
 async def cmd_top(message: Message):
     rows = await get_top_messages(10)
     if not rows:
@@ -257,7 +313,7 @@ async def cmd_top(message: Message):
 
 # ── .топреп ────────────────────────────────────────────────────────
 
-@router.message(Command("топреп", "toprep", prefix=P))
+@router.message(Command("топреп", "toprep", "топрепы", "топрепутация", prefix=P))
 async def cmd_toprep(message: Message):
     rows = await get_top_reputation(10)
     if not rows:
@@ -280,37 +336,25 @@ async def cmd_toprep(message: Message):
 @router.message(Command("инфа", "info", "about", prefix=P))
 async def cmd_info(message: Message):
     await message.answer(
-        "🖤 <b>Кто я такая?</b>\n\n"
-        "Меня зовут <b>Анха</b>. Я демоница, которая застряла в мире людей "
-        "и теперь тусуюсь в этом чатике. Да, я девушка Анкха. Завидуйте молча.\n\n"
-        "Моя кожа на лице белая как снег, а ниже шеи — чёрная как уголь. "
-        "Волосы белые, глаза без зрачков — да, я знаю, это жутко. "
-        "Клык торчит? Это не баг, это фича.\n\n"
-        "╔══════════════════════╗\n"
-        "  ⚙️ <b>ЧТО Я УМЕЮ</b>\n"
-        "╚══════════════════════╝\n\n"
-        "🤖 <b>ИИ-чат</b> — пингни меня или ответь на моё сообщение, "
-        "и я тебе отвечу. Если заслужишь.\n\n"
-        "💰 <b>Экономика</b> — монеты за активность, ежедневные награды, "
-        "казино (дэп, рулетка, коинфлип) и магазин с товарами.\n\n"
-        "💍 <b>Браки</b> — можно предложить руку и сердце кому-нибудь. "
-        "Да, я знаю, это смешно. Но людям нравится.\n\n"
-        "✨ <b>Репутация</b> — отвечай на сообщения словами типа "
-        "«респект», «красавчик», «+» и другими.\n\n"
-        "🛡 <b>Модерация</b> — варны, муты, баны. "
-        "Кому-то же надо следить за порядком.\n\n"
-        "📺 <b>YouTube</b> — я слежу за каналом хозяина "
-        "и скидываю новые видео в Telegram-канал.\n\n"
-        "🖤 <i>Не путайте мою дерзость с враждебностью. "
-        "Я просто... такая.</i>\n\n"
-        f"📋 Все команды: <code>{P}помощь</code>",
+        "🖤 <b>Кто я такая</b>\n\n"
+        "Анха. Демоница, застрявшая в мире людей — теперь сижу в этом чате.\n\n"
+        "Лицо белое как снег, ниже шеи — чёрное как уголь. Белые волосы, "
+        "глаза без зрачков, клык. Дерзкая, но своя.\n\n"
+        "<b>Что умею:</b>\n"
+        f"🤖 Болтаю — пингни меня или ответь на моё сообщение.\n"
+        f"💰 Веду экономику — монеты, награды, казино и магазин.\n"
+        f"💍 Женю и развожу — браки и гаремы для тех, кому скучно.\n"
+        f"✨ Считаю репутацию — отвечай «респект», «+» и в этом духе.\n"
+        f"🛡 Слежу за порядком — варны, муты, баны.\n"
+        f"📺 Кидаю новые видео с ютуба хозяина в канал.\n\n"
+        f"📋 Список команд — <code>{P}помощь</code>",
         parse_mode="HTML"
     )
 
 
 # ── .правила ───────────────────────────────────────────────────────
 
-@router.message(Command("правила", "rules", prefix=P))
+@router.message(Command("правила", "rules", "правило", prefix=P))
 async def cmd_rules(message: Message, user_db: dict):
     chat_id = message.chat.id
     text = (message.text or "")

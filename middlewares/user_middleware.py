@@ -6,7 +6,10 @@ from db.database import (
     upsert_user, get_user, get_role, set_role,
     increment_messages, update_balance,
 )
-from config import OWNER_ID, FRIEND_ID, BESTIE_ID, ALLOWED_GROUP_ID
+from config import (
+    OWNER_ID, FRIEND_ID, BESTIE_ID, ALLOWED_GROUP_ID,
+    MSG_REWARD_CHANCE, MSG_REWARD_MIN, MSG_REWARD_MAX,
+)
 
 
 class UserMiddleware(BaseMiddleware):
@@ -44,9 +47,9 @@ class UserMiddleware(BaseMiddleware):
             text = event.text or ""
             if not text.startswith(".") and not text.startswith("/"):
                 await increment_messages(user.id)
-                # Шанс 20% получить 1-2 монеты за обычное сообщение
-                if random.random() < 0.20:
-                    coins = random.randint(1, 2)
+                # Шанс получить монеты за обычное сообщение (настройки в config.py)
+                if random.random() < MSG_REWARD_CHANCE:
+                    coins = random.randint(MSG_REWARD_MIN, MSG_REWARD_MAX)
                     await update_balance(user.id, coins, "msg_reward", "За активность")
 
         return await handler(event, data)

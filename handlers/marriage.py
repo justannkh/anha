@@ -4,11 +4,16 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from config import OWNER_ID
 from db.database import (
     get_user, get_user_by_username,
     get_marriage, create_marriage, delete_marriage,
     get_all_marriages, get_top_marriages,
     create_proposal, get_proposal_for, delete_proposal,
+    get_harem, is_in_someones_harem, add_harem_member,
+    remove_harem_member, clear_harem,
+    create_harem_proposal, get_harem_proposal_for, delete_harem_proposal,
+    set_harem_consent, has_harem_consent, revoke_harem_consent,
 )
 from utils.roles import owner_only
 
@@ -43,7 +48,7 @@ def _marriage_duration(married_at_str: str) -> str:
 
 # ── .брак ─────────────────────────────────────────────────────────
 
-@router.message(Command("брак", "marry", "свадьба", prefix=P))
+@router.message(Command("брак", "marry", "свадьба", "женить", "жениться", prefix=P))
 async def cmd_marry(message: Message, user_db: dict):
     chat_id = message.chat.id
     if message.chat.type == "private":
@@ -128,7 +133,7 @@ async def cmd_marry(message: Message, user_db: dict):
 
 # ── .бракда ───────────────────────────────────────────────────────
 
-@router.message(Command("бракда", "marryyes", prefix=P))
+@router.message(Command("бракда", "marryyes", "дабрак", "согласие", "согласен", "согласна", prefix=P))
 async def cmd_marry_accept(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -169,7 +174,7 @@ async def cmd_marry_accept(message: Message):
 
 # ── .бракнет ──────────────────────────────────────────────────────
 
-@router.message(Command("бракнет", "marryno", prefix=P))
+@router.message(Command("бракнет", "marryno", "нетбрак", "отказ", prefix=P))
 async def cmd_marry_reject(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -191,7 +196,7 @@ async def cmd_marry_reject(message: Message):
 
 # ── .развод ───────────────────────────────────────────────────────
 
-@router.message(Command("развод", "divorce", prefix=P))
+@router.message(Command("развод", "divorce", "развестись", prefix=P))
 async def cmd_divorce(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -222,7 +227,7 @@ async def cmd_divorce(message: Message):
 
 # ── .мойбрак ──────────────────────────────────────────────────────
 
-@router.message(Command("мойбрак", "mymarriage", prefix=P))
+@router.message(Command("мойбрак", "mymarriage", "бракинфо", "мояпара", prefix=P))
 async def cmd_mymarriage(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -248,7 +253,7 @@ async def cmd_mymarriage(message: Message):
 
 # ── .браки ────────────────────────────────────────────────────────
 
-@router.message(Command("браки", "marriages", prefix=P))
+@router.message(Command("браки", "marriages", "парочки", prefix=P))
 async def cmd_marriages(message: Message):
     chat_id = message.chat.id
     all_m = await get_all_marriages(chat_id)
@@ -271,7 +276,7 @@ async def cmd_marriages(message: Message):
 
 # ── .топбраков ────────────────────────────────────────────────────
 
-@router.message(Command("топбраков", "topmarriages", prefix=P))
+@router.message(Command("топбраков", "topmarriages", "топбраки", "топпар", prefix=P))
 async def cmd_top_marriages(message: Message):
     chat_id = message.chat.id
     top = await get_top_marriages(chat_id, 10)
@@ -295,7 +300,7 @@ async def cmd_top_marriages(message: Message):
 
 # ── .поженить ─────────────────────────────────────────────────────
 
-@router.message(Command("поженить", prefix=P))
+@router.message(Command("поженить", "поженю", prefix=P))
 @owner_only
 async def cmd_force_marry(message: Message):
     chat_id = message.chat.id
@@ -334,7 +339,7 @@ async def cmd_force_marry(message: Message):
 
 # ── .развести ─────────────────────────────────────────────────────
 
-@router.message(Command("развести", prefix=P))
+@router.message(Command("развести", "разженить", prefix=P))
 @owner_only
 async def cmd_force_divorce(message: Message):
     chat_id = message.chat.id
@@ -364,5 +369,291 @@ async def cmd_force_divorce(message: Message):
     await message.answer(
         f"⚖️ Модератор расторгает брак:\n"
         f"💔 <b>{target['full_name']}</b> & <b>{partner_name}</b>",
+        parse_mode="HTML"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ГАРЕМ
+#  Собирать гарем можно только в браке и только с разрешения супруга.
+#  Овнер — исключение: собирает без спроса, и брак с Анхой сохраняется.
+# ══════════════════════════════════════════════════════════════════
+
+def _resolve_target(message: Message):
+    """Достаёт цель из reply или из аргумента команды. Возвращает dict-юзера или None."""
+    return None  # заглушка не используется — логика ниже асинхронная
+
+
+async def _find_target_user(message: Message):
+    """Ищет цель: сначала reply, потом @username/id из текста."""
+    if message.reply_to_message and message.reply_to_message.from_user:
+        ru = message.reply_to_message.from_user
+        if ru.is_bot:
+            return None
+        return {"user_id": ru.id, "full_name": ru.full_name}
+    parts = (message.text or "").split(None, 1)
+    if len(parts) >= 2:
+        arg = parts[1].strip().lstrip("@")
+        t = await get_user(int(arg)) if arg.isdigit() else await get_user_by_username(arg)
+        if t:
+            return {"user_id": t["user_id"], "full_name": t["full_name"]}
+    return None
+
+
+async def _can_build_harem(user_id: int, chat_id: int) -> tuple[bool, str]:
+    """
+    Проверяет, может ли юзер собирать гарем.
+    Овнер — всегда может. Остальные — только если в браке И супруг дал разрешение.
+    Возвращает (можно?, текст_ошибки).
+    """
+    if user_id == OWNER_ID:
+        return True, ""
+
+    marriage = await get_marriage(user_id, chat_id)
+    if not marriage:
+        return False, (
+            "💍 Гарем можно собирать только находясь в браке.\n"
+            f"Сначала вступи в брак: <code>{P}брак @user</code>"
+        )
+
+    spouse_id = marriage["user2_id"] if marriage["user1_id"] == user_id else marriage["user1_id"]
+
+    # Если супруг — Анха (id=0), разрешение спросить не у кого → запрещаем (кроме овнера, он выше).
+    if spouse_id == 0:
+        return False, "🖤 Анха не разрешает тебе собирать гарем. Только хозяину можно."
+
+    if not await has_harem_consent(user_id, spouse_id, chat_id):
+        spouse = await get_user(spouse_id)
+        spouse_name = spouse["full_name"] if spouse else f"id{spouse_id}"
+        return False, (
+            f"🚫 Твоя вторая половинка <b>{spouse_name}</b> ещё не разрешила тебе собирать гарем.\n"
+            f"Пусть напишет: <code>{P}разрешитьгарем</code> (ответом на твоё сообщение или с твоим @)"
+        )
+
+    return True, ""
+
+
+# ── .гарем ────────────────────────────────────────────────────────
+
+@router.message(Command("гарем", "harem", prefix=P))
+async def cmd_harem(message: Message):
+    if message.chat.type == "private":
+        return await message.answer("📍 Гарем работает только в группе.")
+
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    target = await _find_target_user(message)
+
+    # Без аргумента — показываем свой гарем
+    if not target:
+        members = await get_harem(user_id, chat_id)
+        if not members:
+            can, _ = await _can_build_harem(user_id, chat_id)
+            hint = (
+                f"\n\nПригласить кого-то: <code>{P}гарем @user</code>"
+                if can else
+                f"\n\n<i>Сначала получи разрешение супруга на гарем.</i>"
+            )
+            return await message.answer(
+                f"🌹 <b>Твой гарем пуст.</b>{hint}",
+                parse_mode="HTML"
+            )
+        lines = [f"🌹 <b>Гарем {message.from_user.full_name}</b>", f"Участников: <b>{len(members)}</b>\n"]
+        for i, m in enumerate(members, 1):
+            u = await get_user(m["member_id"])
+            name = u["full_name"] if u else f"id{m['member_id']}"
+            lines.append(f"  {i}. 💗 {name}")
+        lines.append(f"\n<i>Выгнать: {P}выгнать @user</i>")
+        return await message.answer("\n".join(lines), parse_mode="HTML")
+
+    # Есть цель — приглашаем
+    can, err = await _can_build_harem(user_id, chat_id)
+    if not can:
+        return await message.answer(err, parse_mode="HTML")
+
+    if target["user_id"] == user_id:
+        return await message.answer("😅 Себя в свой гарем не добавишь.")
+    if target["user_id"] == 0:
+        return await message.answer("🖤 Анху в гарем? Размечтался.")
+
+    # Уже в гареме у этого владельца?
+    existing = await get_harem(user_id, chat_id)
+    if any(m["member_id"] == target["user_id"] for m in existing):
+        return await message.answer(
+            f"💗 <b>{target['full_name']}</b> уже в твоём гареме.",
+            parse_mode="HTML"
+        )
+
+    # Уже в чьём-то другом гареме?
+    in_other = await is_in_someones_harem(target["user_id"], chat_id)
+    if in_other and in_other["owner_id"] != user_id:
+        owner = await get_user(in_other["owner_id"])
+        oname = owner["full_name"] if owner else f"id{in_other['owner_id']}"
+        return await message.answer(
+            f"💔 <b>{target['full_name']}</b> уже состоит в гареме у <b>{oname}</b>.",
+            parse_mode="HTML"
+        )
+
+    await create_harem_proposal(user_id, target["user_id"], chat_id)
+    await message.answer(
+        f"╔══════════════════════╗\n"
+        f"  🌹 <b>ПРИГЛАШЕНИЕ В ГАРЕМ</b>\n"
+        f"╚══════════════════════╝\n\n"
+        f"💗 <b>{message.from_user.full_name}</b> приглашает\n"
+        f"   <b>{target['full_name']}</b> в свой гарем!\n\n"
+        f"✅ Принять: <code>{P}гаремда</code>\n"
+        f"❌ Отклонить: <code>{P}гаремнет</code>\n\n"
+        f"<i>Приглашение действует 24 часа.</i>",
+        parse_mode="HTML"
+    )
+
+
+# ── .гаремда ──────────────────────────────────────────────────────
+
+@router.message(Command("гаремда", "haremyes", "вгарем", "хочувгарем", prefix=P))
+async def cmd_harem_accept(message: Message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    proposal = await get_harem_proposal_for(user_id, chat_id)
+    if not proposal:
+        return await message.answer("💡 Тебя никто не приглашал в гарем.")
+
+    owner_id = proposal["owner_id"]
+
+    # Перепроверяем, что владелец всё ещё имеет право
+    can, err = await _can_build_harem(owner_id, chat_id)
+    if not can:
+        await delete_harem_proposal(user_id, chat_id)
+        return await message.answer("💔 Владелец гарема больше не может его собирать.")
+
+    # Цель не должна быть уже в чужом гареме
+    in_other = await is_in_someones_harem(user_id, chat_id)
+    if in_other and in_other["owner_id"] != owner_id:
+        await delete_harem_proposal(user_id, chat_id)
+        return await message.answer("💔 Ты уже состоишь в другом гареме.")
+
+    success = await add_harem_member(owner_id, user_id, chat_id)
+    await delete_harem_proposal(user_id, chat_id)
+
+    if not success:
+        return await message.answer("❌ Не удалось вступить в гарем. Попробуй ещё раз.")
+
+    owner = await get_user(owner_id)
+    oname = owner["full_name"] if owner else f"id{owner_id}"
+    await message.answer(
+        f"🌹 <b>{message.from_user.full_name}</b> теперь в гареме <b>{oname}</b>! 💗",
+        parse_mode="HTML"
+    )
+
+
+# ── .гаремнет ─────────────────────────────────────────────────────
+
+@router.message(Command("гаремнет", "haremno", "негарем", prefix=P))
+async def cmd_harem_reject(message: Message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    proposal = await get_harem_proposal_for(user_id, chat_id)
+    if not proposal:
+        return await message.answer("💡 Тебя никто не приглашал в гарем.")
+
+    owner = await get_user(proposal["owner_id"])
+    oname = owner["full_name"] if owner else f"id{proposal['owner_id']}"
+    await delete_harem_proposal(user_id, chat_id)
+    await message.answer(
+        f"💔 <b>{message.from_user.full_name}</b> отклоняет приглашение в гарем от <b>{oname}</b>.",
+        parse_mode="HTML"
+    )
+
+
+# ── .выгнать ──────────────────────────────────────────────────────
+
+@router.message(Command("выгнать", "haremkick", "выкинуть", "изгнать", prefix=P))
+async def cmd_harem_kick(message: Message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    target = await _find_target_user(message)
+    if not target:
+        return await message.answer(
+            f"💡 Формат: <code>{P}выгнать @user</code> (или ответом на сообщение).",
+            parse_mode="HTML"
+        )
+
+    removed = await remove_harem_member(user_id, target["user_id"], chat_id)
+    if not removed:
+        return await message.answer(
+            f"❓ <b>{target['full_name']}</b> нет в твоём гареме.",
+            parse_mode="HTML"
+        )
+    await message.answer(
+        f"🚪 <b>{target['full_name']}</b> покидает гарем <b>{message.from_user.full_name}</b>.",
+        parse_mode="HTML"
+    )
+
+
+# ── .разрешитьгарем ───────────────────────────────────────────────
+# Супруг разрешает своей второй половинке собирать гарем.
+
+@router.message(Command("разрешитьгарем", "allowharem", "разрешаюгарем", prefix=P))
+async def cmd_allow_harem(message: Message):
+    if message.chat.type == "private":
+        return await message.answer("📍 Работает только в группе.")
+
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    marriage = await get_marriage(user_id, chat_id)
+    if not marriage:
+        return await message.answer("💡 Ты не в браке — некому давать разрешение.")
+
+    spouse_id = marriage["user2_id"] if marriage["user1_id"] == user_id else marriage["user1_id"]
+    if spouse_id == 0:
+        return await message.answer("🖤 Твоя половинка — Анха. Гаремы тут только у хозяина.")
+
+    await set_harem_consent(spouse_id, user_id, chat_id, True)
+    spouse = await get_user(spouse_id)
+    sname = spouse["full_name"] if spouse else f"id{spouse_id}"
+    await message.answer(
+        f"💞 <b>{message.from_user.full_name}</b> разрешает <b>{sname}</b> собирать гарем.\n"
+        f"<i>Какая широкая душа!</i>\n\n"
+        f"Передумаешь — <code>{P}запретитьгарем</code>",
+        parse_mode="HTML"
+    )
+
+
+# ── .запретитьгарем ───────────────────────────────────────────────
+
+@router.message(Command("запретитьгарем", "denyharem", "запрещаюгарем", prefix=P))
+async def cmd_deny_harem(message: Message):
+    if message.chat.type == "private":
+        return await message.answer("📍 Работает только в группе.")
+
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    marriage = await get_marriage(user_id, chat_id)
+    if not marriage:
+        return await message.answer("💡 Ты не в браке.")
+
+    spouse_id = marriage["user2_id"] if marriage["user1_id"] == user_id else marriage["user1_id"]
+    if spouse_id == 0:
+        return await message.answer("🖤 Нечего запрещать.")
+
+    await revoke_harem_consent(spouse_id, chat_id)
+    # Заодно распускаем уже собранный гарем супруга (он потерял разрешение).
+    # Овнера это не касается — он не зависит от разрешений.
+    if spouse_id != OWNER_ID:
+        cleared = await clear_harem(spouse_id, chat_id)
+    else:
+        cleared = 0
+
+    spouse = await get_user(spouse_id)
+    sname = spouse["full_name"] if spouse else f"id{spouse_id}"
+    extra = f"\nГарем (<b>{cleared}</b> чел.) распущен." if cleared else ""
+    await message.answer(
+        f"🚫 <b>{message.from_user.full_name}</b> запрещает <b>{sname}</b> собирать гарем.{extra}",
         parse_mode="HTML"
     )

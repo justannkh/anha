@@ -182,6 +182,46 @@ async def init_db():
         )
     """)
 
+    # ── ГАРЕМ ─────────────────────────────────────────────────────
+    # owner_id  — владелец гарема (тот, кто его собирает)
+    # member_id — участник гарема
+    # Один и тот же участник не может быть дважды в гареме одного владельца в одном чате.
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS harems (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id   INTEGER NOT NULL,
+            member_id  INTEGER NOT NULL,
+            chat_id    INTEGER NOT NULL,
+            added_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(owner_id, member_id, chat_id)
+        )
+    """)
+
+    # Предложения вступить в гарем (нужно согласие участника)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS harem_proposals (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id   INTEGER NOT NULL,
+            member_id  INTEGER NOT NULL,
+            chat_id    INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(member_id, chat_id)
+        )
+    """)
+
+    # Согласие супруга на сбор гарема в браке.
+    # Если запись есть и granted=1 — супруг разрешил владельцу собирать гарем.
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS harem_consent (
+            owner_id   INTEGER NOT NULL,
+            spouse_id  INTEGER NOT NULL,
+            chat_id    INTEGER NOT NULL,
+            granted    INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (owner_id, chat_id)
+        )
+    """)
+
     await db.commit()
 
     # Создаём фейкового юзера «Анха» для брака с овнером
@@ -603,6 +643,138 @@ async def delete_proposal(to_id: int, chat_id: int):
     await db.execute(
         "DELETE FROM marriage_proposals WHERE to_id = ? AND chat_id = ?",
         (to_id, chat_id)
+    )
+    await db.commit()
+
+
+# ── Гарем ─────────────────────────────────────────────────────────
+
+async def get_harem(owner_id: int, chat_id: int) -> list[dict]:
+    """Возвращает список участников гарема владельца."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM harems WHERE owner_id = ? AND chat_id = ? ORDER BY added_at ASC",
+        (owner_id, chat_id)
+    ) as cur:
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def is_in_someones_harem(member_id: int, chat_id: int) -> dict | None:
+    """Если юзер уже состоит в чьём-то гареме — возвращает запись, иначе None."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM harems WHERE member_id = ? AND chat_id = ?",
+        (member_id, chat_id)
+    ) as cur:
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def add_harem_member(owner_id: int, member_id: int, chat_id: int) -> bool:
+    try:
+        db = await get_db()
+        await db.execute(
+            "INSERT INTO harems (owner_id, member_id, chat_id) VALUES (?, ?, ?)",
+            (owner_id, member_id, chat_id)
+        )
+        await db.commit()
+        return True
+    except Exception:
+        return False
+
+
+async def remove_harem_member(owner_id: int, member_id: int, chat_id: int) -> bool:
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM harems WHERE owner_id = ? AND member_id = ? AND chat_id = ?",
+        (owner_id, member_id, chat_id)
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def clear_harem(owner_id: int, chat_id: int) -> int:
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM harems WHERE owner_id = ? AND chat_id = ?",
+        (owner_id, chat_id)
+    )
+    await db.commit()
+    return cursor.rowcount
+
+
+# ── Предложения в гарем ───────────────────────────────────────────
+
+async def create_harem_proposal(owner_id: int, member_id: int, chat_id: int) -> bool:
+    try:
+        db = await get_db()
+        await db.execute(
+            "DELETE FROM harem_proposals WHERE member_id = ? AND chat_id = ?",
+            (member_id, chat_id)
+        )
+        await db.execute(
+            "INSERT INTO harem_proposals (owner_id, member_id, chat_id) VALUES (?, ?, ?)",
+            (owner_id, member_id, chat_id)
+        )
+        await db.commit()
+        return True
+    except Exception:
+        return False
+
+
+async def get_harem_proposal_for(member_id: int, chat_id: int) -> dict | None:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM harem_proposals WHERE member_id = ? AND chat_id = ?",
+        (member_id, chat_id)
+    ) as cur:
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def delete_harem_proposal(member_id: int, chat_id: int):
+    db = await get_db()
+    await db.execute(
+        "DELETE FROM harem_proposals WHERE member_id = ? AND chat_id = ?",
+        (member_id, chat_id)
+    )
+    await db.commit()
+
+
+# ── Согласие супруга на гарем ─────────────────────────────────────
+
+async def set_harem_consent(owner_id: int, spouse_id: int, chat_id: int, granted: bool):
+    db = await get_db()
+    await db.execute(
+        """
+        INSERT INTO harem_consent (owner_id, spouse_id, chat_id, granted, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(owner_id, chat_id) DO UPDATE SET
+            spouse_id  = excluded.spouse_id,
+            granted    = excluded.granted,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (owner_id, spouse_id, chat_id, 1 if granted else 0)
+    )
+    await db.commit()
+
+
+async def has_harem_consent(owner_id: int, spouse_id: int, chat_id: int) -> bool:
+    """Разрешил ли конкретный супруг владельцу собирать гарем."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT granted FROM harem_consent WHERE owner_id = ? AND spouse_id = ? AND chat_id = ?",
+        (owner_id, spouse_id, chat_id)
+    ) as cur:
+        row = await cur.fetchone()
+        return bool(row and row[0])
+
+
+async def revoke_harem_consent(owner_id: int, chat_id: int):
+    db = await get_db()
+    await db.execute(
+        "DELETE FROM harem_consent WHERE owner_id = ? AND chat_id = ?",
+        (owner_id, chat_id)
     )
     await db.commit()
 
